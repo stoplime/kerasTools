@@ -1,8 +1,10 @@
 import unittest
 
 import os
+import json
 import datatool
 import model
+import numpy as np
 
 class TestStringMethods(unittest.TestCase):
 
@@ -19,6 +21,10 @@ class TestStringMethods(unittest.TestCase):
         # check that s.split fails when the separator is not a string
         with self.assertRaises(TypeError):
             s.split(2)
+
+    def test_datatool(self):
+        d = datatool.dataTool(os.path.join(os.getcwd(), "test_images"), os.path.join(os.getcwd(), "test_labels.json"))
+        self.assertTrue(all(d.get_label_per_batch(0) == np.array([123, 234, 345])))
 
 if __name__ == '__main__':
     unittest.main()
