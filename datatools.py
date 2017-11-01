@@ -2,7 +2,7 @@
 
 import numpy as np
 
-class dataTool:
+class DataTool:
     def __init__(self):
         self.dataGen
 
