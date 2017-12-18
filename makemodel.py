@@ -25,16 +25,28 @@ from keras import backend as K
 import sys
 import os
 PATH = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(PATH, "resnet", "keras-resnet"))
 
+class MakeModel(object):
+    # Getter and Setters
+    @property
+    def model(self):
+        return self.model
 
+    @model.setter
+    def model(self, value):
+        if type(value) is Model:
+            self.model = value
 
-class class_model(object):
+    # constuctor
     def __init__(self, input_shape=(256, 256, 3), output_classes=17):
         self.input_tensor = Input(input_shape)
         self.input_shape = input_shape
         self.output_size = output_classes
 
+    # create self.model
     def create_model(self, model_type='xception', load_weights=None):
+        base = None
         if(model_type == 'inceptionv3' or model_type == 1):
             base = InceptionV3(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
             model_name = 'inceptionv3'
@@ -51,25 +63,6 @@ class class_model(object):
             base = VGG16(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
             model_name = 'vgg16'
             pred = base.output
-        elif(model_type == 'resnet152' or model_type == 5):
-            sys.path.append(os.path.join(PATH, "resnet", "keras-resnet"))
-            from resnet import ResnetBuilder
-            resbuild = ResnetBuilder()
-            base = resbuild.build_resnet_152(self.input_shape, self.output_size)
-            model_name = 'resnet152'
-            pred = base.output
-        elif(model_type == 'resnet50MOD' or model_type == 6):
-            sys.path.append(os.path.join(PATH, "resnet", "keras-resnet"))
-            from resnet import ResnetBuilder
-            resbuild = ResnetBuilder()
-            base = resbuild.build_resnet_50(self.input_shape, self.output_size)
-            model_name = 'resnet50MOD'
-            pred = base.output
-        elif(model_type == 'inceptionv3MOD' or model_type == 7):
-            from keras.applications.inception_v3_mod import InceptionV3MOD
-            base = InceptionV3MOD(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
-            model_name = 'inceptionv3MOD'
-            pred = base.output
         else:
             base = Xception(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
             model_name = 'xception'
@@ -80,8 +73,34 @@ class class_model(object):
         if load_weights != None:
             self.model.load_weights(load_weights)
 
-        for layer in base.layers:
-            layer.trainable = True
+        if base != None:
+            for layer in base.layers:
+                layer.trainable = True
+
+        return self.model
+
+    def compile_model(self, loss = None, optimizer = None, metric = None):
+        """
+        compile_model compiles the self.model instance and specifies the
+        loss, optimizer, and metric of the model
+
+        loss has to be from the parameters.losses_enum object
+        it is default to binary_crossentropy
+
+        optimizer has to be from the parameters.optimizers_enum object
+        it is default to Adam
+
+        metric has to be from the parameters.metrics_enum object
+        it is default to binary_accuracy
+        """
+        if not isinstance(loss, params.losses_enum):
+            loss = params.losses_enum.binary_crossentropy
+        
+        if not isinstance(optimizer, params.optimizers_enum):
+            optimizer = params.optimizers_enum.Adam
+
+        if not isinstance(metric, params.metrics_enum):
+            metric = params.metrics_enum.binary_accuracy
 
         self.compile()
 
@@ -118,9 +137,6 @@ class class_model(object):
         else:
             history = self.model.fit(input_train, labels, validation_data=validation, batch_size=batch_size, epochs=num_epochs, verbose=1, callbacks=[logging, checkpoint, early_stopping])
         return history.history
-
-    def get_model(self):
-        return self.model
         
     def kaggle_metric(self, input_val, labels_val):
         p_val = self.model.predict(input_val, batch_size=128)
