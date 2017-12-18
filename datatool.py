@@ -3,6 +3,7 @@
 import json
 import os
 # from keras.preprocessing import image
+import PIL
 import numpy as np
 import random
 
@@ -27,7 +28,11 @@ class dataTool:
     def get_image_per_batch(self, index):
         images = []
         for b in range(self.batch_size):
-            labels.append(self.image_names[index + b])
+            if index + b >= len(self.image_names):
+                break
+            im = PIL.Image.open(self.image_names[index + b])
+            images.append(im)
+        return images
         
     def get_label_per_batch(self, index):
         labels = []
