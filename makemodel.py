@@ -3,11 +3,12 @@
 
 import json
 import numpy as np
+from enum import Enum, auto
 
 from sklearn.metrics import fbeta_score
 
 from keras.models import Model
-from keras.layers import Input, Dense
+from keras.layers import Input, Dense, Conv2D
 from keras.layers.core import Dropout
 import parameters as params
 
@@ -34,38 +35,58 @@ class MakeModel(object):
     def model(self, value):
         if type(value) is Model:
             self.model = value
+    
+    class basemodel_enum(Enum):
+        xception = auto()
+        inceptionv3 = auto()
+        resnet50 = auto()
+        vgg19 = auto()
+        vgg16 = auto()
 
     # constuctor
-    def __init__(self, input_shape=(256, 256, 3), output_classes=17):
+    def __init__(self, input_shape=(256, 256, 3), output_classes=17, output_shape=None):
         self.input_tensor = Input(input_shape)
         self.input_shape = input_shape
         self.output_size = output_classes
-
-    # create self.model
-    def create_model(self, model_type='xception', load_weights=None):
+        self.basemodel = self.basemodel_enum.xception
+        self.output_shape = output_shape
+    
+    def init_base(self, model_type=None):
         base = None
-        if(model_type == 'inceptionv3' or model_type == 1):
-            base = InceptionV3(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
-            model_name = 'inceptionv3'
-            pred = base.output
-        elif(model_type == 'resnet50' or model_type == 2):
-            base = ResNet50(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
-            model_name = 'resnet50'
-            pred = base.output
-        elif(model_type == 'vgg19' or model_type == 3):
-            base = VGG19(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
-            model_name = 'vgg19'
-            pred = base.output
-        elif(model_type == 'vgg16' or model_type == 4):
-            base = VGG16(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
-            model_name = 'vgg16'
-            pred = base.output
-        else:
+        if (model_type == self.basemodel_enum.xception):
             base = Xception(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
-            model_name = 'xception'
+            model_name = self.basemodel_enum.xception
             pred = base.output
+        elif(model_type == self.basemodel_enum.inceptionv3):
+            base = InceptionV3(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
+            model_name = self.basemodel_enum.inceptionv3
+            pred = base.output
+        elif(model_type == self.basemodel_enum.resnet50):
+            base = ResNet50(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
+            model_name = self.basemodel_enum.resnet50
+            pred = base.output
+        elif(model_type == self.basemodel_enum.vgg19):
+            base = VGG19(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
+            model_name = self.basemodel_enum.vgg19
+            pred = base.output
+        elif(model_type == self.basemodel_enum.vgg16):
+            base = VGG16(include_top=False, weights='imagenet', input_tensor=self.input_tensor, classes=self.output_size, pooling='avg')
+            model_name = self.basemodel_enum.vgg16
+            pred = base.output
+
+        return base, pred
+
+    # create self.model from a base
+    def create_model(self, model_type=None, load_weights=None, overrideModel=True, poped_layers=3):
+        base, pred = self.init_base(model_type)
+        if self.output_shape != None:
+            pred = base.layers[-poped_layers].output
+
         pred = Dense(self.output_size, activation='sigmoid', name='predictions')(pred)
-        self.model = Model(base.input, pred, name=model_name)
+        if self.model == None or overrideModel:
+            self.model = Model(base.input, pred, name=model_name)
+        elif not overrideModel:
+            self.model = Model(base.input, pred, name=model_name)(self.model)
 
         if load_weights != None:
             self.model.load_weights(load_weights)
@@ -74,12 +95,16 @@ class MakeModel(object):
             for layer in base.layers:
                 layer.trainable = True
 
+        self.compile_model()
+
         return self.model
 
     def compile_model(self, loss = None, optimizer = None, metric = None):
         """
         compile_model compiles the self.model instance and specifies the
         loss, optimizer, and metric of the model
+
+        Does not Return anything
 
         loss has to be from the parameters.losses_enum object
         it is default to binary_crossentropy
@@ -103,14 +128,14 @@ class MakeModel(object):
                            optimizer=params.optimizer[optimizer],
                            metrics=[params.metric[metric]])
 
-    def train_model(self, input_train, labels, validation=None, save_path=None):
+    def train_model(self, input_train, labels, monitor='val_loss', validation=None, save_path=None):
         num_epochs = 15
         batch_size = 8
 
         logging = TensorBoard()
         if save_path != None:
-            checkpoint = ModelCheckpoint(str(save_path)+".h5", monitor='val_FScore2', save_weights_only=True, save_best_only=True)
-        early_stopping = EarlyStopping(monitor='val_FScore2', min_delta=0.01, patience=5, verbose=1, mode='max')
+            checkpoint = ModelCheckpoint(str(save_path)+".h5", monitor=monitor, save_weights_only=False, save_best_only=True)
+        early_stopping = EarlyStopping(monitor=monitor, min_delta=0.01, patience=5, verbose=1, mode='max')
 
         if validation==None:
             history = self.model.fit(input_train, labels, validation_split=0.2, batch_size=batch_size, epochs=num_epochs, verbose=1, callbacks=[logging, checkpoint, early_stopping])
