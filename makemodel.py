@@ -5,12 +5,14 @@ import json
 import numpy as np
 from enum import Enum, auto
 
-from sklearn.metrics import fbeta_score
+# from sklearn.metrics import fbeta_score
+# from custom_metric import FScore2
 
 from keras.models import Model
-from keras.layers import Input, Dense, Conv2D
-from keras.layers.core import Dropout
 import parameters as params
+from keras.layers import Input, Dense, Conv2D, GlobalAveragePooling2D
+from keras.layers.core import Dropout, Lambda
+from keras import metrics, losses, optimizers
 
 from keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 
@@ -19,6 +21,8 @@ from keras.applications.inception_v3 import InceptionV3
 from keras.applications.resnet50 import ResNet50
 from keras.applications.vgg19 import VGG19
 from keras.applications.vgg16 import VGG16
+from keras import backend as K
+
 
 import sys
 import os
@@ -124,11 +128,29 @@ class MakeModel(object):
         if not isinstance(metric, params.metrics_enum):
             metric = params.metrics_enum.binary_accuracy
 
-        self.model.compile(loss=params.loss[loss],
-                           optimizer=params.optimizer[optimizer],
-                           metrics=[params.metric[metric]])
+        self.compile()
 
-    def train_model(self, input_train, labels, monitor='val_loss', validation=None, save_path=None):
+    def compile(self):
+        self.model.compile(loss="mse", optimizer=optimizers.RMSprop(lr=0.000001, rho=0.9, epsilon=1e-08, decay=0.0), metrics=["mae"])
+
+    def summary(self):
+        self.model.summary()
+
+    # def train_model(self, input_train, labels, monitor='val_loss', validation=None, save_path=None):
+    #     def load_weights(self, weights_path):
+    #     self.model.load_weights(weights_path)
+
+    def add_normalize(self):
+        self.model.layers.pop()
+        self.model.layers.pop()
+        x = self.model.layers[-1].output
+        x = Conv2D(2, (1, 1), padding='valid', name='conv2')(x)
+        x = GlobalAveragePooling2D()(x)
+        x = Lambda(lambda x: K.l2_normalize(x, axis=1), output_shape=(2,))(x)
+        self.model = Model(self.model.input, outputs=[x])
+        self.compile()
+    
+    def train_model(self, input_train, labels, validation=None, save_path=None):
         num_epochs = 15
         batch_size = 8
 
@@ -146,4 +168,11 @@ class MakeModel(object):
     def kaggle_metric(self, input_val, labels_val):
         p_val = self.model.predict(input_val, batch_size=128)
         return fbeta_score(labels_val, np.array(p_val) > 0.2, beta=2, average='samples')
+
+    def predict(self, input_val):
+        pred = self.model.predict(input_val)
+        return pred
+
+    def evaluate(self, input_val, labels_val, batch_size=16):
+        self.model.evaluate(input_val, labels_val, batch_size)
 
